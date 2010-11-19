@@ -116,15 +116,17 @@ class SearchBackend(BaseSearchBackend):
     your settings.  This should point to a location where you would your
     indexes to reside.
     """
-    def __init__(self, site=None, language='english'):
+    def __init__(self, site=None, language=None):
         """
         Instantiates an instance of `SearchBackend`.
         
         Optional arguments:
             `site` -- The site to associate the backend with (default = None)
-            `stemming_language` -- The stemming language (default = 'english')
+            `language` -- The stemming language (default = None)
         
-        Also sets the stemming language to be used to `stemming_language`.
+        If stemming language is not specified 'english' will be
+        used. Override this by setting `HAYSTACK_XAPIAN_STEM_LANGUAGE`
+        in your settings.
         """
         super(SearchBackend, self).__init__(site)
         
@@ -137,6 +139,12 @@ class SearchBackend(BaseSearchBackend):
         if not os.access(settings.HAYSTACK_XAPIAN_PATH, os.W_OK):
             raise IOError("The path to your Xapian index '%s' is not writable for the current user/group." % settings.HAYSTACK_XAPIAN_PATH)
         
+        if language is None:
+            if hasattr(settings, 'HAYSTACK_XAPIAN_STEM_LANGUAGE'):
+                language = settings.HAYSTACK_XAPIAN_STEM_LANGUAGE
+            else:
+                language = 'english'
+
         self.language = language
         self._schema = None
         self._content_field_name = None
