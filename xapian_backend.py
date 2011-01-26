@@ -1,7 +1,7 @@
 # Copyright (C) 2009-2010 David Sauve, Trapeze.  All rights reserved.
 
 __author__ = 'David Sauve'
-__version__ = (1, 1, 4, 'alpha')
+__version__ = (1, 1, 5, 'beta')
 
 import time
 import datetime
@@ -213,41 +213,45 @@ class SearchBackend(BaseSearchBackend):
                 
                 document_id = DOCUMENT_ID_TERM_PREFIX + get_identifier(obj)
                 data = index.full_prepare(obj)
-                
+                weights = index.get_field_weights()
                 for field in self.schema:
                     if field['field_name'] in data.keys():
                         prefix = DOCUMENT_CUSTOM_TERM_PREFIX + field['field_name'].upper()
                         value = data[field['field_name']]
+                        try:
+                            weight = int(weights[field['field_name']])
+                        except KeyError:
+                            weight = 1
                         if field['type'] == 'text':
                             if field['multi_valued'] == 'false':
                                 term = _marshal_term(value)
-                                term_generator.index_text(term)
-                                term_generator.index_text(term, 1, prefix)
+                                term_generator.index_text(term, weight)
+                                term_generator.index_text(term, weight, prefix)
                                 if len(term.split()) == 1:
-                                    document.add_term(term)
-                                    document.add_term(prefix + term)
+                                    document.add_term(term, weight)
+                                    document.add_term(prefix + term, weight)
                                 document.add_value(field['column'], _marshal_value(value))
                             else:
                                 for term in value:
                                     term = _marshal_term(term)
-                                    term_generator.index_text(term)
-                                    term_generator.index_text(term, 1, prefix)
+                                    term_generator.index_text(term, weight)
+                                    term_generator.index_text(term, weight, prefix)
                                     if len(term.split()) == 1:
-                                        document.add_term(term)
-                                        document.add_term(prefix + term)
+                                        document.add_term(term, weight)
+                                        document.add_term(prefix + term, weight)
                         else:
                             if field['multi_valued'] == 'false':
                                 term = _marshal_term(value)
                                 if len(term.split()) == 1:
-                                    document.add_term(term)
-                                    document.add_term(prefix + term)
+                                    document.add_term(term, weight)
+                                    document.add_term(prefix + term, weight)
                                     document.add_value(field['column'], _marshal_value(value))
                             else:
                                 for term in value:
                                     term = _marshal_term(term)
                                     if len(term.split()) == 1:
-                                        document.add_term(term)
-                                        document.add_term(prefix + term)
+                                        document.add_term(term, weight)
+                                        document.add_term(prefix + term, weight)
                 
                 document.set_data(pickle.dumps(
                     (obj._meta.app_label, obj._meta.module_name, obj.pk, data),
@@ -1080,9 +1084,9 @@ class SearchQuery(BaseSearchQuery):
             return xapian.Query(
                 xapian.Query.OP_AND_NOT,
                 self._all_query(),
-                self.backend.parse_query('%s:%s' % (field, term)),
+                self.backend.parse_query('%s:%s*' % (field, term)),
             )
-        return self.backend.parse_query('%s:%s' % (field, term))
+        return self.backend.parse_query('%s:%s*' % (field, term))
     
     def _filter_gt(self, term, field, is_not):
         return self._filter_lte(term, field, is_not=(is_not != True))
@@ -1236,3 +1240,60 @@ def _marshal_datetime(dt):
             dt.year, dt.month, dt.day, dt.hour,
             dt.minute, dt.second
         )
+
+
+def run(self):
+    """
+    Builds and executes the query. Returns a list of search results.
+    """
+    final_query = self.build_query()
+    kwargs = {
+        'start_offset': self.start_offset,
+    }
+
+    if self.order_by:
+        kwargs['sort_by'] = self.order_by
+
+    if self.end_offset is not None:
+        kwargs['end_offset'] = self.end_offset - self.start_offset
+
+    if self.highlight:
+        kwargs['highlight'] = self.highlight
+
+    if self.facets:
+        kwargs['facets'] = list(self.facets)
+
+    if self.date_facets:
+        kwargs['date_facets'] = self.date_facets
+
+    if self.query_facets:
+        kwargs['query_facets'] = self.query_facets
+
+    if self.narrow_queries:
+        kwargs['narrow_queries'] = self.narrow_queries
+
+    results = self.backend.search(final_query, **kwargs)
+    self._results = results.get('results', [])
+    self._hit_count = results.get('hits', 0)
+    self._facet_counts = results.get('facets', {})
+    self._spelling_suggestion = results.get('spelling_suggestion', None)
+
+
+def run_mlt(self):
+    """
+    Builds and executes the query. Returns a list of search results.
+    """
+    if self._more_like_this is False or self._mlt_instance is None:
+        raise MoreLikeThisError("No instance was provided to determine 'More Like This' results.")
+
+    additional_query_string = self.build_query()
+    kwargs = {
+        'start_offset': self.start_offset,
+    }
+
+    if self.end_offset is not None:
+        kwargs['end_offset'] = self.end_offset - self.start_offset
+
+    results = self.backend.more_like_this(self._mlt_instance, additional_query_string, **kwargs)
+    self._results = results.get('results', [])
+    self._hit_count = results.get('hits', 0)

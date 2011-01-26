@@ -18,7 +18,7 @@ from haystack.exceptions import HaystackError
 from haystack.query import SearchQuerySet, SQ
 from haystack.sites import SearchSite
 
-from core.models import MockTag, MockModel, AnotherMockModel
+from core.models import MockTag, MockModel, AnotherMockModel, AFourthMockModel
 
 
 class XapianMockModel(models.Model):
@@ -93,6 +93,16 @@ class XapianMockSearchIndex(indexes.SearchIndex):
 
     def prepare_empty(self, obj):
         return ''
+
+
+class XapianBoostMockSearchIndex(indexes.SearchIndex):
+    text = indexes.CharField(
+        document=True, use_template=True,
+        template_name='search/indexes/core/mockmodel_template.txt'
+    )
+    author = indexes.CharField(model_attr='author', weight=2.0)
+    editor = indexes.CharField(model_attr='editor')
+    pub_date = indexes.DateField(model_attr='pub_date')
 
 
 class XapianSearchBackendTestCase(TestCase):
@@ -417,13 +427,9 @@ class LiveXapianSearchQueryTestCase(TestCase):
         self.assertEqual(self.sq.get_spelling_suggestion(), u'indexed')
         self.assertEqual(self.sq.get_spelling_suggestion('indxd'), u'indexed')
     
-    def test_startswith_wildcard(self):
-        self.sq.add_filter(SQ(name__startswith='da*'))
+    def test_startswith(self):
+        self.sq.add_filter(SQ(name__startswith='da'))
         self.assertEqual([result.pk for result in self.sq.get_results()], [1, 2, 3])
-        
-    def test_startswith_fullword(self):
-        self.sq.add_filter(SQ(name__startswith='daniel1'))
-        self.assertEqual([result.pk for result in self.sq.get_results()], [1])
     
     def test_build_query_gt(self):
         self.sq.add_filter(SQ(name__gt='m'))
@@ -480,3 +486,53 @@ class LiveXapianSearchQueryTestCase(TestCase):
         
         # Restore.
         settings.DEBUG = old_debug
+
+
+class XapianBoostBackendTestCase(TestCase):
+    def setUp(self):
+        super(XapianBoostBackendTestCase, self).setUp()
+
+        self.site = SearchSite()
+        self.sb = SearchBackend(site=self.site)
+        self.smmi = XapianBoostMockSearchIndex(AFourthMockModel, backend=self.sb)
+        self.site.register(AFourthMockModel, XapianBoostMockSearchIndex)
+
+        # Stow.
+        import haystack
+        self.old_site = haystack.site
+        haystack.site = self.site
+
+        self.sample_objs = []
+
+        for i in xrange(1, 5):
+            mock = AFourthMockModel()
+            mock.id = i
+            if i % 2:
+                mock.author = 'daniel'
+                mock.editor = 'david'
+            else:
+                mock.author = 'david'
+                mock.editor = 'daniel'
+            mock.pub_date = datetime.date(2009, 2, 25) - datetime.timedelta(days=i)
+            self.sample_objs.append(mock)
+
+    def tearDown(self):
+        import haystack
+        haystack.site = self.old_site
+        super(XapianBoostBackendTestCase, self).tearDown()
+
+    def test_boost(self):
+        self.sb.update(self.smmi, self.sample_objs)
+        
+        sqs = SearchQuerySet()
+        
+        self.assertEqual(len(sqs.all()), 4)
+
+        results = sqs.filter(SQ(author='daniel') | SQ(editor='daniel'))
+
+        self.assertEqual([result.id for result in results], [
+            'core.afourthmockmodel.1',
+            'core.afourthmockmodel.3',
+            'core.afourthmockmodel.2',
+            'core.afourthmockmodel.4'
+        ])
