@@ -788,7 +788,7 @@ class SearchBackend(BaseSearchBackend):
                     suggestion.append(term)
                 else:
                     has_suggestion = True # term removed from query
-            return ' '.join(suggestion) if has_suggestion else str()
+            return u' '.join(suggestion) if has_suggestion else u''
         
         term_set = set()
         for term in query:
