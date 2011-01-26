@@ -773,10 +773,18 @@ class SearchBackend(BaseSearchBackend):
         Returns a string with a suggested spelling
         """
         if spelling_query:
-            if ' ' in spelling_query:
-                return ' '.join([database.get_spelling_suggestion(term) for term in spelling_query.split()])
-            else:
-                return database.get_spelling_suggestion(spelling_query)
+            suggestion = []
+            has_suggestion = False
+            for term in spelling_query.split():
+                s_term = database.get_spelling_suggestion(term.lower())
+                if s_term:
+                    suggestion.append(s_term)
+                    has_suggestion = True # term changed
+                elif database.term_exists(term.lower()):
+                    suggestion.append(term)
+                else:
+                    has_suggestion = True # term removed from query
+            return ' '.join(suggestion) if has_suggestion else str()
         
         term_set = set()
         for term in query:

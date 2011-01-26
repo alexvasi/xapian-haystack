@@ -272,6 +272,9 @@ class XapianSearchBackendTestCase(TestCase):
         
         self.assertEqual(self.backend.search(xapian.Query('foo'))['hits'], 0)
         self.assertEqual(self.backend.search(xapian.Query('foo'), spelling_query='indexy')['spelling_suggestion'], 'indexed')
+        self.assertEqual(self.backend.search(xapian.Query('foo'), spelling_query='indexed david1')['spelling_suggestion'], '')
+        self.assertEqual(self.backend.search(xapian.Query('foo'), spelling_query='indxed david1')['spelling_suggestion'], 'indexed david1')
+        self.assertEqual(self.backend.search(xapian.Query('foo'), spelling_query='foo david1')['spelling_suggestion'], 'david1')
         
         self.assertEqual(self.backend.search(xapian.Query('XNAMEdavid'))['hits'], 0)
         self.assertEqual(self.backend.search(xapian.Query('XNAMEdavid'))['spelling_suggestion'], 'david1')
