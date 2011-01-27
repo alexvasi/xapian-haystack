@@ -782,13 +782,13 @@ class SearchBackend(BaseSearchBackend):
             for term in spelling_query.split():
                 s_term = database.get_spelling_suggestion(term.lower())
                 if s_term:
-                    suggestion.append(s_term)
+                    suggestion.append(s_term.decode('utf-8'))
                     has_suggestion = True # term changed
                 elif database.term_exists(term.lower()):
                     suggestion.append(term)
                 else:
                     has_suggestion = True # term removed from query
-            return u' '.join(suggestion) if has_suggestion else u''
+            return ' '.join(suggestion) if has_suggestion else str()
         
         term_set = set()
         for term in query:
